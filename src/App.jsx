@@ -148,7 +148,8 @@ export default function App() {
     if (!arquivo) return;
 
     const leitor = new FileReader();
-    leitor.readAsText(arquivo, "UTF-8");
+    // Lemos como ISO-8859-1 para dar suporte perfeito ao padrão Windows/Excel nacional (ANSI)
+    leitor.readAsText(arquivo, "ISO-8859-1");
     leitor.onload = (event) => {
       try {
         const texto = event.target.result;
@@ -165,34 +166,37 @@ export default function App() {
         const novasDividas = [];
         const hojeFormatado = new Date().toISOString().split('T')[0];
 
-        // 1. Procurar o índice do bloco "VISÃO GERAL DA DIVIDA"
+        // 1. Procurar o índice do bloco "VISÃO GERAL DA DIVIDA" de forma extremamente tolerante
         let indexVisaoGeral = -1;
         for (let i = 0; i < linhas.length; i++) {
-          const linhaLower = linhas[i].toLowerCase();
-          if (linhaLower.includes("visão geral da divida") || 
-              linhaLower.includes("visao geral da divida") ||
-              linhaLower.includes("visao geral da dívida") ||
-              linhaLower.includes("visão geral da dívida")) {
+          const linhaNormalizada = linhas[i].toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, ""); // Remove acentos temporariamente para busca
+          
+          if (linhaNormalizada.includes("visao geral da divida") || 
+              linhaNormalizada.includes("visao geral da devida") ||
+              (linhas[i].toLowerCase().includes("vis") && linhas[i].toLowerCase().includes("geral") && linhas[i].toLowerCase().includes("divid"))) {
             indexVisaoGeral = i;
             break;
           }
         }
 
-        // ESTRATÉGIA A: Encontrou o bloco específico da planilha do usuário
+        // ESTRATÉGIA A: Bloco específico do seu Excel
         if (indexVisaoGeral !== -1) {
           for (let i = indexVisaoGeral + 1; i < linhas.length; i++) {
             const colunas = linhas[i].split(delimitador).map(c => c.trim());
             const credor = colunas[0];
 
-            // Critério de parada: encontrou a linha de TOTAL do bloco ou linha em branco
+            // Condição de parada (Fim do bloco de visão geral)
             if (!credor || credor.toLowerCase() === 'total' || credor.toLowerCase().includes('total')) {
               break;
             }
 
-            // Varre as colunas de trás para frente para achar o valor monetário da dívida
             let valor = 0;
             for (let j = colunas.length - 1; j > 0; j--) {
-              const valorTratado = colunas[j].replace(/R\$\s?/i, '').replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
+              // Limpeza Ultra-Segura: Remove tudo que não for número, vírgula, ponto ou sinal de menos
+              let valorTratado = colunas[j].replace(/[^0-9,-]/g, '');
+              valorTratado = valorTratado.replace(/\./g, '').replace(',', '.');
               const num = parseFloat(valorTratado);
               if (!isNaN(num) && num > 0) {
                 valor = num;
@@ -201,7 +205,6 @@ export default function App() {
             }
 
             if (credor && valor > 0) {
-              // Mapeamento automático de categoria inteligente
               let categoria = 'Outros';
               const credorLower = credor.toLowerCase();
               if (credorLower.includes('nubank') || credorLower.includes('cartao') || credorLower.includes('xp')) {
@@ -219,7 +222,7 @@ export default function App() {
                 vencimento: hojeFormatado,
                 categoria,
                 status: 'Pendente',
-                observacao: 'Importado de resumo orçamentário'
+                observacao: 'Importado de visão geral'
               });
             }
           }
@@ -233,7 +236,6 @@ export default function App() {
             if (!credor) continue;
 
             const credorLower = credor.toLowerCase();
-            // Ignora totalizadores e metas de renda
             if (credorLower.includes('total') || 
                 credorLower.includes('diferença') || 
                 credorLower.includes('diferenca') || 
@@ -247,7 +249,8 @@ export default function App() {
 
             let valor = 0;
             for (let j = colunas.length - 1; j > 0; j--) {
-              const valorTratado = colunas[j].replace(/R\$\s?/i, '').replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
+              let valorTratado = colunas[j].replace(/[^0-9,-]/g, '');
+              valorTratado = valorTratado.replace(/\./g, '').replace(',', '.');
               const num = parseFloat(valorTratado);
               if (!isNaN(num) && num > 0) {
                 valor = num;
