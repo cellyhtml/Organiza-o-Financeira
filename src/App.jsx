@@ -38,6 +38,20 @@ export default function App() {
   const [mostrarModalColar, setMostrarModalColar] = useState(false);
   const [textoColado, setTextoColado] = useState('');
 
+  const [salario, setSalario] = useState(() => {
+    const salvo = localStorage.getItem('@financeiro:salario');
+    return salvo ? parseFloat(salvo) : 0;
+  });
+  const [rendaExtra, setRendaExtra] = useState(() => {
+    const salvo = localStorage.getItem('@financeiro:rendaExtra');
+    return salvo ? parseFloat(salvo) : 0;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('@financeiro:salario', salario.toString());
+    localStorage.setItem('@financeiro:rendaExtra', rendaExtra.toString());
+  }, [salario, rendaExtra]);
+
   // Salvar no localStorage automaticamente ao mudar
   useEffect(() => {
     try {
@@ -582,6 +596,76 @@ export default function App() {
           {/* Formulário e Gráfico (Col 1) */}
           <div className="space-y-6">
             
+            {/* Card de Renda e Saldo Liberado */}
+            <section className="bg-[#18181b] p-6 rounded-xl border border-[#27272a] space-y-4">
+              <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                <span>💰</span> Renda & Orçamento
+              </h2>
+              
+              <div className="space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Salário Principal</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={salario || ''}
+                      onChange={(e) => setSalario(parseFloat(e.target.value) || 0)}
+                      placeholder="0,00"
+                      className="w-full bg-[#09090b] border border-[#27272a] rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-zinc-400 uppercase mb-1">Renda Extra</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={rendaExtra || ''}
+                      onChange={(e) => setRendaExtra(parseFloat(e.target.value) || 0)}
+                      placeholder="0,00"
+                      className="w-full bg-[#09090b] border border-[#27272a] rounded-lg px-2.5 py-1.5 text-xs text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="bg-[#09090b] p-4 rounded-lg border border-zinc-800 space-y-2 mt-2">
+                  <div className="flex justify-between text-xs text-zinc-400">
+                    <span>Renda Total:</span>
+                    <span className="font-semibold text-zinc-200">
+                      R$ {(salario + rendaExtra).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  
+                  <div className="flex justify-between text-xs text-zinc-400 border-b border-zinc-800/60 pb-2">
+                    <span>Contas Pendentes:</span>
+                    <span className="font-semibold text-amber-400">
+                      - R$ {totais.pendente.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  {/* Saldo Liberado (Sobrar após pagar as contas pendentes) */}
+                  <div className="flex justify-between items-center pt-1">
+                    <span className="text-xs font-bold text-zinc-300">Saldo Disponível:</span>
+                    <span className={`text-sm font-extrabold ${
+                      (salario + rendaExtra) - totais.pendente >= 0 ? 'text-emerald-400' : 'text-rose-500 animate-pulse'
+                    }`}>
+                      R$ {((salario + rendaExtra) - totais.pendente).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+
+                  {/* Diferença geral (Renda Total - Dívidas Totais) */}
+                  <div className="flex justify-between items-center text-[10px] text-zinc-500 pt-1 border-t border-zinc-900 mt-1">
+                    <span>Diferença Geral:</span>
+                    <span className={`font-semibold ${
+                      (salario + rendaExtra) - totais.totalGeral >= 0 ? 'text-zinc-400' : 'text-rose-500/80'
+                    }`}>
+                      R$ {((salario + rendaExtra) - totais.totalGeral).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
             {/* Formulário */}
             <section className="bg-[#18181b] p-6 rounded-xl border border-[#27272a]">
               <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
