@@ -35,6 +35,8 @@ export default function App() {
   const [filtroStatus, setFiltroStatus] = useState('Todas');
   const [ordenacao, setOrdenacao] = useState('vencimento'); // vencimento | valor | credor
   const [alertaVencimento, setAlertaVencimento] = useState([]);
+  const [mostrarModalColar, setMostrarModalColar] = useState(false);
+  const [textoColado, setTextoColado] = useState('');
 
   // Salvar no localStorage automaticamente ao mudar
   useEffect(() => {
@@ -288,6 +290,134 @@ export default function App() {
     };
   };
 
+  const processarDadosColados = (texto) => {
+    try {
+      const linhas = texto.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+      
+      if (linhas.length === 0) {
+        alert("O texto colado está vazio.");
+        return false;
+      }
+
+      const delimitador = '\t';
+      const novasDividas = [];
+      const hojeFormatado = new Date().toISOString().split('T')[0];
+
+      let indexVisaoGeral = -1;
+      for (let i = 0; i < linhas.length; i++) {
+        const linhaNormalizada = linhas[i].toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "");
+        
+        if (linhaNormalizada.includes("visao geral da divida") || 
+            linhaNormalizada.includes("visao geral da devida") ||
+            (linhas[i].toLowerCase().includes("vis") && linhas[i].toLowerCase().includes("geral") && linhas[i].toLowerCase().includes("divid"))) {
+          indexVisaoGeral = i;
+          break;
+        }
+      }
+
+      if (indexVisaoGeral !== -1) {
+        for (let i = indexVisaoGeral + 1; i < linhas.length; i++) {
+          const colunas = linhas[i].split(delimitador).map(c => c.trim());
+          const credor = colunas[0];
+
+          if (!credor || credor.toLowerCase() === 'total' || credor.toLowerCase().includes('total')) {
+            break;
+          }
+
+          let valor = 0;
+          for (let j = colunas.length - 1; j > 0; j--) {
+            let valorTratado = colunas[j].replace(/[^0-9,-]/g, '');
+            valorTratado = valorTratado.replace(/\./g, '').replace(',', '.');
+            const num = parseFloat(valorTratado);
+            if (!isNaN(num) && num > 0) {
+              valor = num;
+              break;
+            }
+          }
+
+          if (credor && valor > 0) {
+            let categoria = 'Outros';
+            const credorLower = credor.toLowerCase();
+            if (credorLower.includes('nubank') || credorLower.includes('cartao') || credorLower.includes('xp')) {
+              categoria = 'Cartão de Crédito';
+            } else if (credorLower.includes('fixa') || credorLower.includes('luz') || credorLower.includes('agua') || credorLower.includes('internet')) {
+              categoria = 'Contas de Consumo';
+            }
+
+            novasDividas.push({
+              id: `${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+              credor,
+              valor,
+              vencimento: hojeFormatado,
+              categoria,
+              status: 'Pendente',
+              observacao: 'Importado de visão geral (Ctrl+V)'
+            });
+          }
+        }
+      } else {
+        for (let i = 0; i < linhas.length; i++) {
+          const colunas = linhas[i].split(delimitador).map(c => c.trim());
+          if (colunas.length < 2) continue;
+
+          const credor = colunas[0];
+          if (!credor) continue;
+
+          const credorLower = credor.toLowerCase();
+          if (credorLower.includes('total') || 
+              credorLower.includes('diferença') || 
+              credorLower.includes('diferenca') || 
+              credorLower.includes('renda') || 
+              credorLower.includes('receber') || 
+              credorLower.includes('saldo') || 
+              credorLower.includes('visão geral') || 
+              credorLower.includes('fatura atual')) {
+            continue;
+          }
+
+          let valor = 0;
+          for (let j = colunas.length - 1; j > 0; j--) {
+            let valorTratado = colunas[j].replace(/[^0-9,-]/g, '');
+            valorTratado = valorTratado.replace(/\./g, '').replace(',', '.');
+            const num = parseFloat(valorTratado);
+            if (!isNaN(num) && num > 0) {
+              valor = num;
+              break;
+            }
+          }
+
+          if (credor && valor > 0) {
+            novasDividas.push({
+              id: `${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+              credor,
+              valor,
+              vencimento: hojeFormatado,
+              categoria: 'Outros',
+              status: 'Pendente',
+              observacao: 'Importado via Ctrl+V'
+            });
+          }
+        }
+      }
+
+      if (novasDividas.length === 0) {
+        alert("Nenhuma dívida com valores válidos foi identificada no texto colado.");
+        return false;
+      }
+
+      if (confirm(`Deseja importar ${novasDividas.length} dívidas copiadas do Excel?`)) {
+        setDividas(prev => [...prev, ...novasDividas].sort((a, b) => new Date(a.vencimento) - new Date(b.vencimento)));
+        return true;
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao ler dados colados.");
+    }
+    return false;
+  };
+
   // Cálculos financeiros robustos
   const totais = Array.isArray(dividas) ? dividas.reduce((acc, d) => {
     const valorNum = parseFloat(d.valor) || 0;
@@ -363,9 +493,17 @@ export default function App() {
             <p className="text-zinc-400 text-sm mt-1">Gerencie, planeje e planeje a quitação de seus compromissos.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            {/* Botão de Colar do Excel */}
+            <button
+              onClick={() => setMostrarModalColar(true)}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-2 rounded-lg border border-indigo-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+            >
+              <span>📋 Colar do Excel (Ctrl+V)</span>
+            </button>
+
             {/* Botão CSV */}
-            <label className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-2 rounded-lg border border-indigo-500/20 transition-all cursor-pointer flex items-center gap-1.5">
-              <span>📥 Importar Planilha (CSV)</span>
+            <label className="bg-[#18181b] hover:bg-zinc-800 text-zinc-300 text-xs font-semibold px-3 py-2 rounded-lg border border-[#27272a] transition-all cursor-pointer flex items-center gap-1.5">
+              <span>Planilha (CSV)</span>
               <input type="file" accept=".csv" onChange={importarCSV} className="hidden" />
             </label>
 
@@ -731,6 +869,52 @@ export default function App() {
 
         </div>
       </div>
+
+      {/* Modal para Colar Células do Excel */}
+      {mostrarModalColar && (
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-[#18181b] border border-[#27272a] rounded-xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+            <div>
+              <h3 className="text-lg font-bold text-white">Importação Rápida (Copiar e Colar)</h3>
+              <p className="text-xs text-zinc-400 mt-1">
+                Abra sua planilha no Excel, selecione as linhas do bloco que deseja importar, copie (**Ctrl+C**), e cole na caixa abaixo (**Ctrl+V**).
+              </p>
+            </div>
+
+            <textarea
+              value={textoColado}
+              onChange={(e) => setTextoColado(e.target.value)}
+              rows="8"
+              placeholder="Cole os dados aqui (Ctrl+V)..."
+              className="w-full bg-[#09090b] border border-[#27272a] rounded-lg px-3 py-2 text-xs text-zinc-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
+            ></textarea>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setMostrarModalColar(false);
+                  setTextoColado('');
+                }}
+                className="px-4 py-2 bg-[#09090b] hover:bg-zinc-800 border border-[#27272a] rounded-lg text-xs font-semibold text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  const sucesso = processarDadosColados(textoColado);
+                  if (sucesso) {
+                    setMostrarModalColar(false);
+                    setTextoColado('');
+                  }
+                }}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+              >
+                Confirmar Importação
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
