@@ -143,6 +143,96 @@ export default function App() {
     };
   };
 
+  const importarCSV = (e) => {
+    const arquivo = e.target.files[0];
+    if (!arquivo) return;
+
+    const leitor = new FileReader();
+    leitor.readAsText(arquivo, "UTF-8");
+    leitor.onload = (event) => {
+      try {
+        const texto = event.target.result;
+        const linhas = texto.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+        
+        if (linhas.length < 2) {
+          alert("O arquivo CSV deve conter uma linha de cabeçalho e pelo menos uma linha de dados.");
+          return;
+        }
+
+        const cabecalho = linhas[0];
+        const delimitador = cabecalho.includes(';') ? ';' : ',';
+        const colunas = cabecalho.split(delimitador).map(c => c.trim().toLowerCase());
+
+        const idxCredor = colunas.findIndex(c => c.includes('credor') || c.includes('nome') || c.includes('empresa'));
+        const idxValor = colunas.findIndex(c => c.includes('valor') || c.includes('preço') || c.includes('preco') || c.includes('total'));
+        const idxVencimento = colunas.findIndex(c => c.includes('vencimento') || c.includes('data') || c.includes('prazo'));
+        const idxCategoria = colunas.findIndex(c => c.includes('categoria') || c.includes('tipo'));
+        const idxObservacao = colunas.findIndex(c => c.includes('observacao') || c.includes('obs') || c.includes('descrição') || c.includes('descricao'));
+
+        if (idxCredor === -1 || idxValor === -1 || idxVencimento === -1) {
+          alert("CSV inválido. Certifique-se de que a planilha possui as colunas: 'Credor', 'Valor' e 'Vencimento' na primeira linha.");
+          return;
+        }
+
+        const novasDividas = [];
+
+        for (let i = 1; i < linhas.length; i++) {
+          const dadosLinha = linhas[i].split(delimitador).map(d => d.trim());
+          if (dadosLinha.length < 3) continue;
+
+          const credor = dadosLinha[idxCredor];
+          
+          let valorBruto = dadosLinha[idxValor] || "0";
+          valorBruto = valorBruto
+            .replace(/R\$\s?/i, '')
+            .replace(/\./g, '')
+            .replace(',', '.');
+          const valor = parseFloat(valorBruto) || 0;
+
+          let vencimentoRaw = dadosLinha[idxVencimento] || "";
+          let vencimento = vencimentoRaw;
+          if (vencimentoRaw.includes('/')) {
+            const partes = vencimentoRaw.split('/');
+            if (partes.length === 3) {
+              vencimento = `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
+            }
+          }
+
+          let categoriaRaw = idxCategoria !== -1 ? dadosLinha[idxCategoria] : 'Outros';
+          const categoriaValida = CATEGORIAS.find(c => c.nome.toLowerCase() === categoriaRaw.toLowerCase());
+          const categoria = categoriaValida ? categoriaValida.nome : 'Outros';
+
+          const observacao = idxObservacao !== -1 ? dadosLinha[idxObservacao] : '';
+
+          if (credor && valor > 0 && vencimento) {
+            novasDividas.push({
+              id: `${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+              credor,
+              valor,
+              vencimento,
+              categoria,
+              status: 'Pendente',
+              observacao
+            });
+          }
+        }
+
+        if (novasDividas.length === 0) {
+          alert("Nenhuma dívida válida foi encontrada na planilha. Verifique as datas e valores.");
+          return;
+        }
+
+        if (confirm(`Deseja importar ${novasDividas.length} dívidas da planilha?`)) {
+          setDividas(prev => [...prev, ...novasDividas].sort((a, b) => new Date(a.vencimento) - new Date(b.vencimento)));
+        }
+
+      } catch (err) {
+        console.error(err);
+        alert("Erro ao ler planilha. Garanta que o arquivo está salvo em formato CSV.");
+      }
+    };
+  };
+
   // Cálculos financeiros robustos
   const totais = Array.isArray(dividas) ? dividas.reduce((acc, d) => {
     const valorNum = parseFloat(d.valor) || 0;
@@ -218,6 +308,12 @@ export default function App() {
             <p className="text-zinc-400 text-sm mt-1">Gerencie, planeje e planeje a quitação de seus compromissos.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            {/* Botão CSV */}
+            <label className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-2 rounded-lg border border-indigo-500/20 transition-all cursor-pointer flex items-center gap-1.5">
+              <span>📥 Importar Planilha (CSV)</span>
+              <input type="file" accept=".csv" onChange={importarCSV} className="hidden" />
+            </label>
+
             <button
               onClick={exportarBackup}
               className="bg-[#18181b] hover:bg-zinc-800 text-zinc-300 text-xs font-semibold px-3 py-2 rounded-lg border border-[#27272a] transition-all flex items-center gap-1.5"
