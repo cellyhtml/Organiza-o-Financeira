@@ -162,130 +162,125 @@ export default function App() {
         const primeiraLinha = linhas[0];
         const delimitador = primeiraLinha.includes(';') ? ';' : ',';
 
-        let dadosExemplo = primeiraLinha.split(delimitador).map(d => d.trim());
-        let linhaInicialDados = 1;
-
-        if (linhas.length > 1) {
-          dadosExemplo = linhas[1].split(delimitador).map(d => d.trim());
-        } else {
-          linhaInicialDados = 0;
-        }
-
-        let idxCredor = -1;
-        let idxValor = -1;
-        let idxVencimento = -1;
-        let idxCategoria = -1;
-        let idxObservacao = -1;
-
-        const colunasCabecalho = primeiraLinha.split(delimitador).map(c => c.trim().toLowerCase());
-        idxCredor = colunasCabecalho.findIndex(c => c.includes('credor') || c.includes('nome') || c.includes('empresa') || c.includes('desc'));
-        idxValor = colunasCabecalho.findIndex(c => c.includes('valor') || c.includes('preço') || c.includes('preco') || c.includes('total') || c.includes('quant'));
-        idxVencimento = colunasCabecalho.findIndex(c => c.includes('vencimento') || c.includes('data') || c.includes('prazo'));
-        idxCategoria = colunasCabecalho.findIndex(c => c.includes('categoria') || c.includes('tipo'));
-        idxObservacao = colunasCabecalho.findIndex(c => c.includes('observacao') || c.includes('obs') || c.includes('descricao'));
-
-        if (idxCredor === -1 || idxValor === -1 || idxVencimento === -1) {
-          idxCredor = -1;
-          idxValor = -1;
-          idxVencimento = -1;
-          
-          dadosExemplo.forEach((dado, index) => {
-            if (!dado) return;
-
-            const regexData = /(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})|(\d{4}[\/-]\d{1,2}[\/-]\d{1,2})/;
-            if (idxVencimento === -1 && regexData.test(dado)) {
-              idxVencimento = index;
-              return;
-            }
-
-            const valorTratado = dado.replace(/R\$\s?/i, '').replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
-            const num = parseFloat(valorTratado);
-            if (idxValor === -1 && !isNaN(num) && num !== 0 && valorTratado.match(/^[0-9.-]+$/)) {
-              idxValor = index;
-              return;
-            }
-
-            if (idxCredor === -1 && dado.length > 1) {
-              idxCredor = index;
-            } else if (idxObservacao === -1 && dado.length > 0) {
-              idxObservacao = index;
-            }
-          });
-
-          const regexDataLinhaZero = /(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4})|(\d{4}[\/-]\d{1,2}[\/-]\d{1,2})/;
-          if (regexDataLinhaZero.test(primeiraLinha)) {
-            linhaInicialDados = 0;
-          }
-        }
-
-        if (idxVencimento === -1) idxVencimento = 0;
-        if (idxCredor === -1) idxCredor = 1;
-        if (idxValor === -1) idxValor = 2;
-
         const novasDividas = [];
+        const hojeFormatado = new Date().toISOString().split('T')[0];
 
-        for (let i = linhaInicialDados; i < linhas.length; i++) {
-          const dadosLinha = linhas[i].split(delimitador).map(d => d.trim());
-          if (dadosLinha.length <= Math.max(idxCredor, idxValor, idxVencimento)) continue;
+        // 1. Procurar o índice do bloco "VISÃO GERAL DA DIVIDA"
+        let indexVisaoGeral = -1;
+        for (let i = 0; i < linhas.length; i++) {
+          const linhaLower = linhas[i].toLowerCase();
+          if (linhaLower.includes("visão geral da divida") || 
+              linhaLower.includes("visao geral da divida") ||
+              linhaLower.includes("visao geral da dívida") ||
+              linhaLower.includes("visão geral da dívida")) {
+            indexVisaoGeral = i;
+            break;
+          }
+        }
 
-          const credor = dadosLinha[idxCredor] || "Credor Não Identificado";
-          
-          let valorBruto = dadosLinha[idxValor] || "0";
-          valorBruto = valorBruto.replace(/R\$\s?/i, '').replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
-          const valor = Math.abs(parseFloat(valorBruto)) || 0;
+        // ESTRATÉGIA A: Encontrou o bloco específico da planilha do usuário
+        if (indexVisaoGeral !== -1) {
+          for (let i = indexVisaoGeral + 1; i < linhas.length; i++) {
+            const colunas = linhas[i].split(delimitador).map(c => c.trim());
+            const credor = colunas[0];
 
-          let vencimentoRaw = dadosLinha[idxVencimento] || "";
-          let vencimento = vencimentoRaw;
-          if (vencimentoRaw.includes('/')) {
-            const partes = vencimentoRaw.split('/');
-            if (partes.length === 3) {
-              vencimento = `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
+            // Critério de parada: encontrou a linha de TOTAL do bloco ou linha em branco
+            if (!credor || credor.toLowerCase() === 'total' || credor.toLowerCase().includes('total')) {
+              break;
             }
-          } else if (vencimentoRaw.includes('-')) {
-            const partes = vencimentoRaw.split('-');
-            if (partes.length === 3 && partes[0].length === 2) {
-              vencimento = `${partes[2]}-${partes[1].padStart(2, '0')}-${partes[0].padStart(2, '0')}`;
+
+            // Varre as colunas de trás para frente para achar o valor monetário da dívida
+            let valor = 0;
+            for (let j = colunas.length - 1; j > 0; j--) {
+              const valorTratado = colunas[j].replace(/R\$\s?/i, '').replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
+              const num = parseFloat(valorTratado);
+              if (!isNaN(num) && num > 0) {
+                valor = num;
+                break;
+              }
+            }
+
+            if (credor && valor > 0) {
+              // Mapeamento automático de categoria inteligente
+              let categoria = 'Outros';
+              const credorLower = credor.toLowerCase();
+              if (credorLower.includes('nubank') || credorLower.includes('cartao') || credorLower.includes('xp')) {
+                categoria = 'Cartão de Crédito';
+              } else if (credorLower.includes('fixa') || credorLower.includes('luz') || credorLower.includes('agua') || credorLower.includes('internet')) {
+                categoria = 'Contas de Consumo';
+              } else if (credorLower.includes('aluguel') || credorLower.includes('financiamento')) {
+                categoria = 'Aluguel / Financiamento';
+              }
+
+              novasDividas.push({
+                id: `${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+                credor,
+                valor,
+                vencimento: hojeFormatado,
+                categoria,
+                status: 'Pendente',
+                observacao: 'Importado de resumo orçamentário'
+              });
             }
           }
+        } else {
+          // ESTRATÉGIA B: Planilha convencional de linhas (Fallback)
+          for (let i = 0; i < linhas.length; i++) {
+            const colunas = linhas[i].split(delimitador).map(c => c.trim());
+            if (colunas.length < 2) continue;
 
-          let dataFinal = vencimento;
-          const testeData = new Date(vencimento + 'T00:00:00');
-          if (isNaN(testeData.getTime())) {
-            if (i === 0) continue;
-            dataFinal = new Date().toISOString().split('T')[0];
-          }
+            const credor = colunas[0];
+            if (!credor) continue;
 
-          let categoriaRaw = idxCategoria !== -1 ? dadosLinha[idxCategoria] : 'Outros';
-          const categoriaValida = CATEGORIAS.find(c => c.nome.toLowerCase() === categoriaRaw.toLowerCase());
-          const categoria = categoriaValida ? categoriaValida.nome : 'Outros';
+            const credorLower = credor.toLowerCase();
+            // Ignora totalizadores e metas de renda
+            if (credorLower.includes('total') || 
+                credorLower.includes('diferença') || 
+                credorLower.includes('diferenca') || 
+                credorLower.includes('renda') || 
+                credorLower.includes('receber') || 
+                credorLower.includes('saldo') || 
+                credorLower.includes('visão geral') || 
+                credorLower.includes('fatura atual')) {
+              continue;
+            }
 
-          const observacao = idxObservacao !== -1 ? dadosLinha[idxObservacao] : '';
+            let valor = 0;
+            for (let j = colunas.length - 1; j > 0; j--) {
+              const valorTratado = colunas[j].replace(/R\$\s?/i, '').replace(/\s/g, '').replace(/\./g, '').replace(',', '.');
+              const num = parseFloat(valorTratado);
+              if (!isNaN(num) && num > 0) {
+                valor = num;
+                break;
+              }
+            }
 
-          if (credor && valor > 0) {
-            novasDividas.push({
-              id: `${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
-              credor,
-              valor,
-              vencimento: dataFinal,
-              categoria,
-              status: 'Pendente',
-              observacao
-            });
+            if (credor && valor > 0) {
+              novasDividas.push({
+                id: `${Date.now()}-${i}-${Math.random().toString(36).substr(2, 4)}`,
+                credor,
+                valor,
+                vencimento: hojeFormatado,
+                categoria: 'Outros',
+                status: 'Pendente',
+                observacao: 'Importado via planilha'
+              });
+            }
           }
         }
 
         if (novasDividas.length === 0) {
-          alert("Nenhuma dívida com valores válidos pôde ser importada do seu arquivo.");
+          alert("Nenhuma dívida com valores válidos foi encontrada na sua planilha.");
           return;
         }
 
-        if (confirm(`Deseja importar ${novasDividas.length} dívidas identificadas na planilha?`)) {
+        if (confirm(`Identificamos ${novasDividas.length} dívidas na planilha. Deseja importá-las para sua lista?`)) {
           setDividas(prev => [...prev, ...novasDividas].sort((a, b) => new Date(a.vencimento) - new Date(b.vencimento)));
         }
 
       } catch (err) {
         console.error(err);
-        alert("Erro no processamento da planilha. Certifique-se de que é um CSV válido.");
+        alert("Erro ao ler planilha. Certifique-se de que é um CSV válido.");
       }
     };
   };
