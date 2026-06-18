@@ -38,6 +38,39 @@ export default function App() {
   const [mostrarModalColar, setMostrarModalColar] = useState(false);
   const [textoColado, setTextoColado] = useState('');
 
+  // Estados do PWA e Responsividade Móvel
+  const [abaAtiva, setAbaAtiva] = useState('dividas'); // dividas | orcamento | adicionar
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [mostrarBotaoInstalar, setMostrarBotaoInstalar] = useState(false);
+  const [mostrarModalAjudaInstalacao, setMostrarModalAjudaInstalacao] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setMostrarBotaoInstalar(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setMostrarBotaoInstalar(false);
+    }
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const instalarApp = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    console.log(`Escolha de instalação: ${outcome}`);
+    setDeferredPrompt(null);
+    setMostrarBotaoInstalar(false);
+  };
+
   const [salario, setSalario] = useState(() => {
     const salvo = localStorage.getItem('@financeiro:salario');
     return salvo ? parseFloat(salvo) : 0;
@@ -507,10 +540,28 @@ export default function App() {
             <p className="text-zinc-400 text-sm mt-1">Gerencie, planeje e planeje a quitação de seus compromissos.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
+            {/* Botões do PWA (Instalar) */}
+            {mostrarBotaoInstalar ? (
+              <button
+                onClick={instalarApp}
+                className="bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white text-xs font-bold px-3.5 py-2 rounded-lg border border-indigo-500/20 transition-all flex items-center gap-1.5 cursor-pointer shadow-lg shadow-indigo-550/20"
+              >
+                <span>📲 Instalar Aplicativo</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => setMostrarModalAjudaInstalacao(true)}
+                className="bg-[#18181b] hover:bg-zinc-800 text-zinc-300 text-xs font-semibold px-3 py-2 rounded-lg border border-[#27272a] transition-all flex items-center gap-1.5 cursor-pointer"
+                title="Aprenda a instalar como aplicativo no seu celular"
+              >
+                <span>📲 Instalar no Celular</span>
+              </button>
+            )}
+
             {/* Botão de Colar do Excel */}
             <button
               onClick={() => setMostrarModalColar(true)}
-              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-3 py-2 rounded-lg border border-indigo-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+              className="bg-[#18181b] hover:bg-zinc-800 text-zinc-300 text-xs font-semibold px-3 py-2 rounded-lg border border-[#27272a] transition-all flex items-center gap-1.5 cursor-pointer"
             >
               <span>📋 Colar do Excel (Ctrl+V)</span>
             </button>
@@ -590,14 +641,51 @@ export default function App() {
           </div>
         </section>
 
+        {/* Tabs Mobile para melhor visualização responsiva */}
+        <div className="flex border-b border-zinc-800 lg:hidden mb-4 bg-[#18181b]/50 rounded-xl p-1 gap-1">
+          <button 
+            type="button"
+            onClick={() => setAbaAtiva('dividas')}
+            className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              abaAtiva === 'dividas' 
+                ? 'bg-indigo-600 text-white shadow-md' 
+                : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            📋 Dívidas ({dividasTratadas.length})
+          </button>
+          <button 
+            type="button"
+            onClick={() => setAbaAtiva('orcamento')}
+            className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              abaAtiva === 'orcamento' 
+                ? 'bg-indigo-600 text-white shadow-md' 
+                : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            💰 Orçamento
+          </button>
+          <button 
+            type="button"
+            onClick={() => setAbaAtiva('adicionar')}
+            className={`flex-1 py-2 text-center text-xs font-bold rounded-lg transition-all cursor-pointer ${
+              abaAtiva === 'adicionar' 
+                ? 'bg-indigo-600 text-white shadow-md' 
+                : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            ➕ Adicionar
+          </button>
+        </div>
+
         {/* Conteúdo Principal */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           
           {/* Formulário e Gráfico (Col 1) */}
-          <div className="space-y-6">
+          <div className={`space-y-6 ${abaAtiva === 'dividas' ? 'hidden lg:block' : ''}`}>
             
             {/* Card de Renda e Saldo Liberado */}
-            <section className="bg-[#18181b] p-6 rounded-xl border border-[#27272a] space-y-4">
+            <section className={`bg-[#18181b] p-6 rounded-xl border border-[#27272a] space-y-4 ${abaAtiva === 'orcamento' ? 'block' : 'hidden lg:block'}`}>
               <h2 className="text-lg font-bold text-white flex items-center gap-2">
                 <span>💰</span> Renda & Orçamento
               </h2>
@@ -667,7 +755,7 @@ export default function App() {
             </section>
 
             {/* Formulário */}
-            <section className="bg-[#18181b] p-6 rounded-xl border border-[#27272a]">
+            <section className={`bg-[#18181b] p-6 rounded-xl border border-[#27272a] ${abaAtiva === 'adicionar' ? 'block' : 'hidden lg:block'}`}>
               <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
                 <span>➕</span> Adicionar Compromisso
               </h2>
@@ -747,7 +835,7 @@ export default function App() {
 
             {/* Gráfico SVG de Categorias */}
             {distribuicaoCategorias.length > 0 && (
-              <section className="bg-[#18181b] p-6 rounded-xl border border-[#27272a] flex flex-col items-center">
+              <section className={`bg-[#18181b] p-6 rounded-xl border border-[#27272a] flex flex-col items-center ${abaAtiva === 'orcamento' ? 'block' : 'hidden lg:block'}`}>
                 <h3 className="text-sm font-bold text-white mb-4 self-start">Distribuição de Pendências</h3>
                 
                 <div className="relative w-40 h-40">
@@ -800,7 +888,7 @@ export default function App() {
           </div>
 
           {/* Listagem (Col 2 e 3) */}
-          <div className="lg:col-span-2 space-y-4">
+          <div className={`lg:col-span-2 space-y-4 ${abaAtiva === 'dividas' ? 'block' : 'hidden lg:block'}`}>
             
             {/* Filtros e Ordenação */}
             <div className="bg-[#18181b] p-4 rounded-xl border border-[#27272a] flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4">
@@ -994,6 +1082,51 @@ export default function App() {
                 className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
               >
                 Confirmar Importação
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Ajuda de Instalação (PWA) */}
+      {mostrarModalAjudaInstalacao && (
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
+          <div className="bg-[#18181b] border border-[#27272a] rounded-xl max-w-md w-full p-6 space-y-4 shadow-2xl">
+            <div>
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <span>📲</span> Como baixar o aplicativo
+              </h3>
+              <p className="text-xs text-zinc-400 mt-1">
+                Você pode salvar este Organizador Financeiro como um aplicativo em seu celular ou computador para acesso rápido, sem gastar memória de abas e com funcionamento offline.
+              </p>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div className="bg-[#09090b] p-3 rounded-lg border border-[#27272a]">
+                <p className="font-bold text-indigo-400 mb-1">No Android (Chrome / Edge):</p>
+                <p className="text-zinc-300">1. Toque no ícone de 3 pontinhos no canto superior do navegador.</p>
+                <p className="text-zinc-300">2. Selecione <strong className="text-zinc-100">"Instalar aplicativo"</strong> ou <strong className="text-zinc-100">"Adicionar à tela de início"</strong>.</p>
+              </div>
+
+              <div className="bg-[#09090b] p-3 rounded-lg border border-[#27272a]">
+                <p className="font-bold text-indigo-400 mb-1">No iPhone / iPad (Safari):</p>
+                <p className="text-zinc-300">1. Toque no botão de <strong className="text-zinc-100">Compartilhar</strong> (quadrado com seta para cima).</p>
+                <p className="text-zinc-300">2. Role o menu para baixo e selecione <strong className="text-zinc-100">"Adicionar à Tela de Início"</strong>.</p>
+              </div>
+
+              <div className="bg-[#09090b] p-3 rounded-lg border border-[#27272a]">
+                <p className="font-bold text-indigo-400 mb-1">No Computador (Chrome / Edge / Opera):</p>
+                <p className="text-zinc-300">1. Clique no ícone de instalação (monitor com seta para baixo ou "+") na barra de endereços do seu navegador.</p>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setMostrarModalAjudaInstalacao(false)}
+                className="w-full px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer text-center"
+              >
+                Entendido
               </button>
             </div>
           </div>
