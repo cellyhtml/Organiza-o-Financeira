@@ -38,6 +38,21 @@ export default function App() {
   const [mostrarModalColar, setMostrarModalColar] = useState(false);
   const [textoColado, setTextoColado] = useState('');
 
+  // Estados do PWA, Edição e Navegação
+  const [abaPrincipal, setAbaPrincipal] = useState('painel'); // painel | graficos
+  const [mostrarModalEditar, setMostrarModalEditar] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState({
+    credor: '',
+    valor: '',
+    vencimento: '',
+    categoria: CATEGORIAS[0].nome,
+    observacao: '',
+    status: 'Pendente'
+  });
+  const [hoveredSlice, setHoveredSlice] = useState(null);
+  const [hoveredBar, setHoveredBar] = useState(null);
+
   // Estados do PWA e Responsividade Móvel
   const [abaAtiva, setAbaAtiva] = useState('dividas'); // dividas | orcamento | adicionar
   const [deferredPrompt, setDeferredPrompt] = useState(null);
@@ -160,6 +175,45 @@ export default function App() {
     if (confirm("Deseja mesmo remover este compromisso financeiro?")) {
       setDividas(prev => prev.filter(d => d.id !== id));
     }
+  };
+
+  const iniciarEdicao = (divida) => {
+    setEditId(divida.id);
+    setEditForm({
+      credor: divida.credor,
+      valor: divida.valor.toString(),
+      vencimento: divida.vencimento,
+      categoria: divida.categoria,
+      observacao: divida.observacao || '',
+      status: divida.status || 'Pendente'
+    });
+    setMostrarModalEditar(true);
+  };
+
+  const handleEditChange = (e) => {
+    const { name, value } = e.target;
+    setEditForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleEditSubmit = (e) => {
+    e.preventDefault();
+    if (!editForm.credor || !editForm.valor || !editForm.vencimento) {
+      alert("Por favor, preencha Credor, Valor e Vencimento.");
+      return;
+    }
+
+    setDividas(prev => prev.map(d => d.id === editId ? {
+      ...d,
+      credor: editForm.credor,
+      valor: parseFloat(editForm.valor),
+      vencimento: editForm.vencimento,
+      categoria: editForm.categoria,
+      observacao: editForm.observacao,
+      status: editForm.status
+    } : d));
+
+    setMostrarModalEditar(false);
+    setEditId(null);
   };
 
   // Funções de Importação e Exportação de Backup (JSON)
@@ -606,8 +660,40 @@ export default function App() {
           </div>
         )}
 
-        {/* Indicadores / Cards */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        {/* Seletor de Aba Principal */}
+        <div className="flex border-b border-zinc-800 gap-6">
+          <button
+            onClick={() => setAbaPrincipal('painel')}
+            className={`pb-3 text-sm font-semibold transition-all relative cursor-pointer ${
+              abaPrincipal === 'painel' 
+                ? 'text-indigo-400 font-bold' 
+                : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            Painel Geral
+            {abaPrincipal === 'painel' && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 rounded-full"></span>
+            )}
+          </button>
+          <button
+            onClick={() => setAbaPrincipal('graficos')}
+            className={`pb-3 text-sm font-semibold transition-all relative cursor-pointer ${
+              abaPrincipal === 'graficos' 
+                ? 'text-indigo-400 font-bold' 
+                : 'text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            Gráficos & Análises
+            {abaPrincipal === 'graficos' && (
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-indigo-500 rounded-full"></span>
+            )}
+          </button>
+        </div>
+
+        {abaPrincipal === 'painel' ? (
+          <>
+            {/* Indicadores / Cards */}
+            <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="bg-[#18181b] p-6 rounded-xl border border-[#27272a] relative overflow-hidden group hover:border-zinc-700 transition-all">
             <p className="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Total de Dívidas</p>
             <p className="text-2xl font-bold mt-2 text-zinc-100">
@@ -857,14 +943,24 @@ export default function App() {
                           strokeDasharray={dashArray}
                           strokeDashoffset={dashOffset}
                           className="transition-all duration-500 hover:stroke-[12px] cursor-pointer"
-                          title={`${fat.nome}: R$ ${fat.total}`}
+                          onMouseEnter={() => setHoveredSlice({ tipo: 'sidebar', label: fat.nome, valor: fat.total, percent: fat.percent })}
+                          onMouseLeave={() => setHoveredSlice(null)}
                         />
                       );
                     })}
                   </svg>
-                  <div className="absolute inset-0 flex flex-col justify-center items-center text-center">
-                    <span className="text-[10px] text-zinc-400 uppercase font-semibold">Restante</span>
-                    <span className="text-sm font-bold text-white">R$ {totalPendentesCategoria.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}</span>
+                  <div className="absolute inset-0 flex flex-col justify-center items-center text-center pointer-events-none px-4">
+                    <span className="text-[9px] text-zinc-400 uppercase font-semibold truncate max-w-[90px]">
+                      {hoveredSlice && hoveredSlice.tipo === 'sidebar' ? hoveredSlice.label : 'Restante'}
+                    </span>
+                    <span className="text-sm font-bold text-white">
+                      R$ {(hoveredSlice && hoveredSlice.tipo === 'sidebar' ? hoveredSlice.valor : totalPendentesCategoria).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                    </span>
+                    {hoveredSlice && hoveredSlice.tipo === 'sidebar' && (
+                      <span className="text-[9px] text-indigo-400 font-bold">
+                        {(hoveredSlice.percent * 100).toFixed(0)}%
+                      </span>
+                    )}
                   </div>
                 </div>
 
@@ -994,8 +1090,17 @@ export default function App() {
                               {divida.status === 'Pago' ? 'Reabrir' : 'Quitar'}
                             </button>
                             <button
+                              onClick={() => iniciarEdicao(divida)}
+                              className="p-2.5 bg-indigo-500/10 text-indigo-400 hover:bg-indigo-500/20 rounded-lg border border-indigo-500/20 text-xs font-bold transition-colors cursor-pointer flex items-center justify-center"
+                              title="Editar compromisso"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                              </svg>
+                            </button>
+                            <button
                               onClick={() => excluirDivida(divida.id)}
-                              className="p-2 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 rounded-lg border border-rose-500/20 text-xs font-bold transition-colors cursor-pointer"
+                              className="p-2.5 bg-rose-500/10 text-rose-500 hover:bg-rose-500/20 rounded-lg border border-rose-500/20 text-xs font-bold transition-colors cursor-pointer flex items-center justify-center"
                               title="Excluir dívida"
                             >
                               ✕
@@ -1040,6 +1145,557 @@ export default function App() {
           </div>
 
         </div>
+        </>
+        ) : (
+          <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Linha de Indicadores Avançados */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              
+              {/* Comprometimento de Renda Card */}
+              <div className="bg-[#18181b] p-6 rounded-xl border border-[#27272a] flex flex-col justify-between h-full relative overflow-hidden group hover:border-zinc-700 transition-all">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider text-zinc-400">Comprometimento de Renda</h3>
+                  <p className="text-xs text-zinc-500">Qual fração do seu orçamento total está comprometido.</p>
+                </div>
+                
+                <div className="my-4 flex justify-center">
+                  {(() => {
+                    const rendaTotal = salario + rendaExtra;
+                    const pctComprometido = rendaTotal > 0 ? (totais.totalGeral / rendaTotal) * 100 : 0;
+                    
+                    let corGauge = '#10b981';
+                    let textoStatus = 'Saudável';
+                    let corTexto = 'text-emerald-400';
+                    if (pctComprometido > 35 && pctComprometido <= 60) {
+                      corGauge = '#f59e0b';
+                      textoStatus = 'Atenção';
+                      corTexto = 'text-amber-400';
+                    } else if (pctComprometido > 60) {
+                      corGauge = '#ef4444';
+                      textoStatus = 'Crítico';
+                      corTexto = 'text-rose-500';
+                    }
+
+                    const circGauge = Math.PI * 35;
+                    const dashArrayGauge = `${Math.min(pctComprometido, 100) / 100 * circGauge} ${circGauge}`;
+
+                    return (
+                      <div className="relative w-40 h-24">
+                        <svg className="w-full h-full" viewBox="0 0 100 60">
+                          <path 
+                            d="M 15 50 A 35 35 0 0 1 85 50" 
+                            fill="none" 
+                            stroke="#27272a" 
+                            strokeWidth="8" 
+                            strokeLinecap="round" 
+                          />
+                          {rendaTotal > 0 && (
+                            <path 
+                              d="M 15 50 A 35 35 0 0 1 85 50" 
+                              fill="none" 
+                              stroke={corGauge} 
+                              strokeWidth="8" 
+                              strokeLinecap="round" 
+                              strokeDasharray={dashArrayGauge}
+                              className="transition-all duration-500"
+                            />
+                          )}
+                        </svg>
+                        <div className="absolute bottom-1 inset-x-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                          <span className="text-xl font-black text-white">{pctComprometido.toFixed(1)}%</span>
+                          <span className={`text-[10px] font-bold uppercase tracking-wider ${corTexto}`}>{textoStatus}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+                
+                <div className="text-xs text-zinc-400 bg-[#09090b] p-3 rounded-lg border border-zinc-800 space-y-1">
+                  <div className="flex justify-between">
+                    <span>Renda Mensal:</span>
+                    <span className="font-semibold text-zinc-100">R$ {(salario + rendaExtra).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Comprometido:</span>
+                    <span className="font-semibold text-rose-400">R$ {totais.totalGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Status de Pagamentos Card */}
+              <div className="bg-[#18181b] p-6 rounded-xl border border-[#27272a] flex flex-col justify-between h-full relative overflow-hidden group hover:border-zinc-700 transition-all">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider text-zinc-400">Status Geral de Contas</h3>
+                  <p className="text-xs text-zinc-500">Progresso de quitação e contas atrasadas.</p>
+                </div>
+
+                <div className="my-2">
+                  {(() => {
+                    const totalPago = totais.pago;
+                    const totalPendentePrazo = totais.pendente - totais.atrasado;
+                    const totalAtrasado = totais.atrasado;
+                    const totalDívidas = totais.totalGeral;
+
+                    const statusFatias = [
+                      { nome: 'Pagas', valor: totalPago, cor: '#10b981', bg: 'bg-emerald-500/10', text: 'text-emerald-400' },
+                      { nome: 'No Prazo', valor: totalPendentePrazo, cor: '#f59e0b', bg: 'bg-amber-500/10', text: 'text-amber-400' },
+                      { nome: 'Atrasadas', valor: totalAtrasado, cor: '#ef4444', bg: 'bg-red-500/10', text: 'text-red-400' }
+                    ].filter(f => f.valor > 0);
+
+                    const totalStatusVal = statusFatias.reduce((sum, f) => sum + f.valor, 0);
+                    
+                    let acumuladoStatusAngulo = 0;
+                    const statusFatiasGrafico = statusFatias.map(f => {
+                      const percent = totalStatusVal > 0 ? (f.valor / totalStatusVal) : 0;
+                      const angulo = percent * 360;
+                      const inicio = acumuladoStatusAngulo;
+                      acumuladoStatusAngulo += angulo;
+                      return { ...f, percent, inicio, angulo };
+                    });
+
+                    if (totalDívidas === 0) {
+                      return <p className="text-center text-zinc-500 text-xs py-8">Nenhuma conta cadastrada.</p>;
+                    }
+
+                    return (
+                      <div className="flex flex-col sm:flex-row items-center gap-4">
+                        <div className="relative w-28 h-28 shrink-0">
+                          <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                            <circle cx="50" cy="50" r="35" fill="none" stroke="#27272a" strokeWidth="10" />
+                            {statusFatiasGrafico.map((fat, idx) => {
+                              const circ = 2 * Math.PI * 35;
+                              const dashArray = `${(fat.percent * circ)} ${circ}`;
+                              const dashOffset = `${-(fat.inicio / 360 * circ)}`;
+                              return (
+                                <circle
+                                  key={idx}
+                                  cx="50"
+                                  cy="50"
+                                  r="35"
+                                  fill="none"
+                                  stroke={fat.cor}
+                                  strokeWidth="10"
+                                  strokeDasharray={dashArray}
+                                  strokeDashoffset={dashOffset}
+                                  className="transition-all duration-500 hover:stroke-[12px] cursor-pointer"
+                                  onMouseEnter={() => setHoveredSlice({ tipo: 'status', label: fat.nome, valor: fat.valor, percent: fat.percent })}
+                                  onMouseLeave={() => setHoveredSlice(null)}
+                                />
+                              );
+                            })}
+                          </svg>
+                          <div className="absolute inset-0 flex flex-col justify-center items-center text-center pointer-events-none">
+                            <span className="text-[8px] text-zinc-400 uppercase font-semibold">
+                              {hoveredSlice && hoveredSlice.tipo === 'status' ? hoveredSlice.label : 'Quitação'}
+                            </span>
+                            <span className="text-xs font-bold text-white">
+                              {hoveredSlice && hoveredSlice.tipo === 'status' 
+                                ? `${(hoveredSlice.percent * 100).toFixed(0)}%` 
+                                : `${(totalDívidas > 0 ? (totalPago / totalDívidas) * 100 : 0).toFixed(0)}%`
+                              }
+                            </span>
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-1.5 w-full text-xs">
+                          {statusFatias.map((sf, idx) => (
+                            <div key={idx} className="flex justify-between items-center text-zinc-300">
+                              <div className="flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: sf.cor }}></span>
+                                <span>{sf.nome}</span>
+                              </div>
+                              <span className="font-semibold text-zinc-100">
+                                R$ {sf.valor.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+                
+                <div className="text-xs text-zinc-500 text-center border-t border-zinc-800/40 pt-2.5 mt-2">
+                  💡 Passe o mouse nas fatias do gráfico para detalhes.
+                </div>
+              </div>
+
+              {/* Card de Insights Rápidos */}
+              <div className="bg-[#18181b] p-6 rounded-xl border border-[#27272a] flex flex-col justify-between h-full relative overflow-hidden group hover:border-zinc-700 transition-all">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider text-zinc-400">Insights Rápidos</h3>
+                  <p className="text-xs text-zinc-500">Destaques automáticos baseados nos seus dados.</p>
+                </div>
+                
+                <div className="my-3 space-y-3 text-xs">
+                  {(() => {
+                    const rendaTotal = salario + rendaExtra;
+                    const pendentes = dividas.filter(d => d.status !== 'Pago');
+                    const atrasadas = dividas.filter(d => d.status === 'Pendente' && verificarAtraso(d.vencimento, d.status));
+                    const totalDívidas = totais.totalGeral;
+
+                    if (dividas.length === 0) {
+                      return <p className="text-zinc-500 italic">Cadastre compromissos para obter insights.</p>;
+                    }
+
+                    const maiorDivida = [...dividas].sort((a, b) => b.valor - a.valor)[0];
+                    const catMap = dividas.reduce((acc, d) => {
+                      acc[d.categoria] = (acc[d.categoria] || 0) + d.valor;
+                      return acc;
+                    }, {});
+                    const maiorCat = Object.keys(catMap).sort((a, b) => catMap[b] - catMap[a])[0];
+
+                    return (
+                      <div className="space-y-2">
+                        {maiorDivida && (
+                          <div className="bg-[#09090b] p-2.5 rounded-lg border border-zinc-800/60">
+                            <span className="text-[10px] text-zinc-500 uppercase block font-bold">Maior Compromisso:</span>
+                            <span className="text-zinc-200 font-semibold">{maiorDivida.credor}</span> — <span className="text-indigo-400 font-semibold">R$ {maiorDivida.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        )}
+                        {maiorCat && (
+                          <div className="bg-[#09090b] p-2.5 rounded-lg border border-zinc-800/60">
+                            <span className="text-[10px] text-zinc-500 uppercase block font-bold">Categoria com Mais Gastos:</span>
+                            <span className="text-zinc-200 font-semibold">{maiorCat}</span> — <span className="text-amber-400 font-semibold">R$ {catMap[maiorCat].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        )}
+                        {atrasadas.length > 0 && (
+                          <div className="bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-lg text-rose-300">
+                            <strong>Atenção:</strong> Você tem {atrasadas.length} contas em atraso somando R$ {atrasadas.reduce((s, d) => s + d.valor, 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}.
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+                
+                <div className="text-[10px] text-zinc-500 text-center">
+                  Atualizado em tempo real
+                </div>
+              </div>
+
+            </div>
+
+            {/* Linha dos Gráficos de Detalhamento */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+              
+              {/* Gráfico 1: Evolução Mensal / Contas por Mês */}
+              <div className="bg-[#18181b] p-6 rounded-xl border border-[#27272a] space-y-4">
+                <div>
+                  <h3 className="text-base font-bold text-white">Cronograma de Vencimentos</h3>
+                  <p className="text-xs text-zinc-400">Total de compromissos agrupados por mês de vencimento.</p>
+                </div>
+
+                <div className="relative h-64 flex items-end justify-center w-full">
+                  {(() => {
+                    const contasPorMes = dividas.reduce((acc, d) => {
+                      if (!d.vencimento) return acc;
+                      const partes = d.vencimento.split('-');
+                      if (partes.length < 2) return acc;
+                      const chave = `${partes[0]}-${partes[1]}`;
+                      if (!acc[chave]) {
+                        acc[chave] = { pago: 0, pendente: 0, total: 0 };
+                      }
+                      const val = parseFloat(d.valor) || 0;
+                      if (d.status === 'Pago') {
+                        acc[chave].pago += val;
+                      } else {
+                        acc[chave].pendente += val;
+                      }
+                      acc[chave].total += val;
+                      return acc;
+                    }, {});
+
+                    const mesesOrdenados = Object.keys(contasPorMes).sort().map(chave => {
+                      const [ano, mes] = chave.split('-');
+                      const nomesMeses = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+                      const label = `${nomesMeses[parseInt(mes, 10) - 1]}/${ano.slice(2)}`;
+                      return {
+                        chave,
+                        label,
+                        pago: contasPorMes[chave].pago,
+                        pendente: contasPorMes[chave].pendente,
+                        total: contasPorMes[chave].total
+                      };
+                    });
+
+                    if (mesesOrdenados.length === 0) {
+                      return (
+                        <div className="absolute inset-0 flex items-center justify-center text-zinc-500 text-sm">
+                          Nenhum vencimento registrado.
+                        </div>
+                      );
+                    }
+
+                    const maxVal = Math.max(...mesesOrdenados.map(m => m.total), 100);
+                    const paddingLeft = 50;
+                    const paddingRight = 20;
+                    const paddingTop = 20;
+                    const paddingBottom = 40;
+                    const graphWidth = 500 - paddingLeft - paddingRight;
+                    const graphHeight = 220 - paddingTop - paddingBottom;
+                    const columnSpace = graphWidth / mesesOrdenados.length;
+                    const barWidth = Math.min(28, columnSpace * 0.55);
+
+                    const gridValores = [0, 0.25, 0.5, 0.75, 1];
+
+                    return (
+                      <div className="w-full h-full flex flex-col justify-between">
+                        <svg className="w-full h-56" viewBox="0 0 500 220">
+                          {/* Grid Lines */}
+                          {gridValores.map((gv, idx) => {
+                            const y = paddingTop + graphHeight - gv * graphHeight;
+                            const valorGrid = gv * maxVal;
+                            return (
+                              <g key={idx} className="opacity-40">
+                                <line 
+                                  x1={paddingLeft} 
+                                  y1={y} 
+                                  x2={500 - paddingRight} 
+                                  y2={y} 
+                                  stroke="#27272a" 
+                                  strokeWidth="1" 
+                                  strokeDasharray="3 3" 
+                                />
+                                <text 
+                                  x={paddingLeft - 8} 
+                                  y={y + 4} 
+                                  fill="#a1a1aa" 
+                                  fontSize="9" 
+                                  textAnchor="end"
+                                >
+                                  R$ {valorGrid.toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                                </text>
+                              </g>
+                            );
+                          })}
+
+                          {/* Barras */}
+                          {mesesOrdenados.map((m, idx) => {
+                            const x = paddingLeft + idx * columnSpace + (columnSpace - barWidth) / 2;
+                            const pagoHeight = (m.pago / maxVal) * graphHeight;
+                            const pendenteHeight = (m.pendente / maxVal) * graphHeight;
+
+                            const yPago = paddingTop + graphHeight - pagoHeight;
+                            const yPendente = yPago - pendenteHeight;
+
+                            return (
+                              <g key={idx}>
+                                {m.pago > 0 && (
+                                  <rect
+                                    x={x}
+                                    y={yPago}
+                                    width={barWidth}
+                                    height={pagoHeight}
+                                    fill="#10b981"
+                                    rx="2"
+                                    className="transition-all duration-300 opacity-85 hover:opacity-100"
+                                  />
+                                )}
+                                {m.pendente > 0 && (
+                                  <rect
+                                    x={x}
+                                    y={yPendente}
+                                    width={barWidth}
+                                    height={pendenteHeight}
+                                    fill="#f59e0b"
+                                    rx="2"
+                                    className="transition-all duration-300 opacity-85 hover:opacity-100"
+                                  />
+                                )}
+                                <text
+                                  x={x + barWidth / 2}
+                                  y={220 - paddingBottom + 18}
+                                  fill="#d4d4d8"
+                                  fontSize="10"
+                                  fontWeight="bold"
+                                  textAnchor="middle"
+                                >
+                                  {m.label}
+                                </text>
+
+                                <rect
+                                  x={x - (columnSpace - barWidth) / 2}
+                                  y={paddingTop}
+                                  width={columnSpace}
+                                  height={graphHeight}
+                                  fill="transparent"
+                                  className="cursor-pointer"
+                                  onMouseEnter={() => setHoveredBar(m)}
+                                  onMouseLeave={() => setHoveredBar(null)}
+                                />
+                              </g>
+                            );
+                          })}
+
+                          <line 
+                            x1={paddingLeft} 
+                            y1={paddingTop + graphHeight} 
+                            x2={500 - paddingRight} 
+                            y2={paddingTop + graphHeight} 
+                            stroke="#3f3f46" 
+                            strokeWidth="1.5" 
+                          />
+                        </svg>
+
+                        <div className="h-10 text-center flex justify-center items-center bg-[#09090b] rounded-lg border border-zinc-800 mx-2 text-xs">
+                          {hoveredBar ? (
+                            <div className="flex gap-4">
+                              <span className="font-semibold text-zinc-300">{hoveredBar.label}:</span>
+                              <span className="text-emerald-400 font-semibold">Pago: R$ {hoveredBar.pago.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                              <span className="text-amber-400 font-semibold">Pendente: R$ {hoveredBar.pendente.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                              <span className="text-zinc-100 font-bold border-l border-zinc-800 pl-3">Total: R$ {hoveredBar.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                            </div>
+                          ) : (
+                            <span className="text-zinc-500 italic">Passe o mouse nas colunas para detalhar os valores</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+
+              {/* Gráfico 2: Distribuição Geral por Categorias */}
+              <div className="bg-[#18181b] p-6 rounded-xl border border-[#27272a] space-y-4">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="text-base font-bold text-white">Despesas por Categoria</h3>
+                    <p className="text-xs text-zinc-400">Distribuição geral de todas as dívidas por categoria.</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row items-center justify-around gap-6">
+                  {(() => {
+                    const distribuicaoCategoriasTodas = CATEGORIAS.map(cat => {
+                      const totalCat = dividas
+                        .filter(d => d.categoria === cat.nome)
+                        .reduce((sum, d) => sum + (parseFloat(d.valor) || 0), 0);
+                      return { ...cat, total: totalCat };
+                    }).filter(c => c.total > 0);
+
+                    const totalGeralCategoria = distribuicaoCategoriasTodas.reduce((sum, c) => sum + c.total, 0);
+                    const totalDívidas = totais.totalGeral;
+
+                    let acumuladoCatGeralAngulo = 0;
+                    const fatiasCatGeralGrafico = distribuicaoCategoriasTodas.map(c => {
+                      const percent = totalGeralCategoria > 0 ? (c.total / totalGeralCategoria) : 0;
+                      const angulo = percent * 360;
+                      const inicio = acumuladoCatGeralAngulo;
+                      acumuladoCatGeralAngulo += angulo;
+                      return { ...c, percent, inicio, angulo };
+                    });
+
+                    if (fatiasCatGeralGrafico.length === 0) {
+                      return <div className="text-zinc-500 text-sm py-12">Nenhuma categoria registrada.</div>;
+                    }
+
+                    return (
+                      <>
+                        <div className="relative w-44 h-44 shrink-0">
+                          <svg className="w-full h-full -rotate-90" viewBox="0 0 100 100">
+                            <circle cx="50" cy="50" r="35" fill="none" stroke="#27272a" strokeWidth="10" />
+                            {fatiasCatGeralGrafico.map((fat, idx) => {
+                              const circ = 2 * Math.PI * 35;
+                              const dashArray = `${(fat.percent * circ)} ${circ}`;
+                              const dashOffset = `${-(fat.inicio / 360 * circ)}`;
+                              return (
+                                <circle
+                                  key={idx}
+                                  cx="50"
+                                  cy="50"
+                                  r="35"
+                                  fill="none"
+                                  stroke={fat.cor}
+                                  strokeWidth="10"
+                                  strokeDasharray={dashArray}
+                                  strokeDashoffset={dashOffset}
+                                  className="transition-all duration-500 hover:stroke-[12px] cursor-pointer"
+                                  onMouseEnter={() => setHoveredSlice({ tipo: 'categoria', label: fat.nome, valor: fat.total, percent: fat.percent })}
+                                  onMouseLeave={() => setHoveredSlice(null)}
+                                />
+                              );
+                            })}
+                          </svg>
+                          <div className="absolute inset-0 flex flex-col justify-center items-center text-center pointer-events-none px-4">
+                            <span className="text-[9px] text-zinc-400 uppercase font-semibold truncate max-w-[110px]">
+                              {hoveredSlice && hoveredSlice.tipo === 'categoria' ? hoveredSlice.label : 'Dívidas'}
+                            </span>
+                            <span className="text-sm font-bold text-white">
+                              R$ {(hoveredSlice && hoveredSlice.tipo === 'categoria' ? hoveredSlice.valor : totalDívidas).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}
+                            </span>
+                            <span className="text-[9px] text-indigo-400 font-bold">
+                              {hoveredSlice && hoveredSlice.tipo === 'categoria' ? `${(hoveredSlice.percent * 100).toFixed(1)}%` : '100%'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="w-full space-y-2 text-xs">
+                          {fatiasCatGeralGrafico.map((cat, idx) => (
+                            <div key={idx} className="flex justify-between items-center text-zinc-300">
+                              <div className="flex items-center gap-2">
+                                <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: cat.cor }}></span>
+                                <span>{cat.nome}</span>
+                              </div>
+                              <div className="text-right">
+                                <span className="font-semibold text-zinc-100">
+                                  R$ {cat.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </span>
+                                <span className="text-[10px] text-zinc-500 block">
+                                  {(cat.percent * 100).toFixed(0)}% do total
+                                </span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              </div>
+
+            </div>
+
+            {/* Método Bola de Neve no Painel de Análise */}
+            {(() => {
+              const pendentes = dividas.filter(d => d.status !== 'Pago');
+              if (pendentes.length > 1) {
+                const pendentesOrdenadas = [...pendentes].sort((a, b) => a.valor - b.valor);
+                const alvo = pendentesOrdenadas[0];
+                return (
+                  <div className="bg-[#18181b] p-6 rounded-xl border border-[#27272a] space-y-4">
+                    <div className="flex items-center gap-3">
+                      <span className="text-2xl">🏔️</span>
+                      <div>
+                        <h4 className="text-sm font-bold text-white uppercase tracking-wider">Estratégia Recomendada: Método Bola de Neve</h4>
+                        <p className="text-xs text-zinc-400">Elimine credores rapidamente focando no menor saldo devedor primeiro.</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                      <div className="bg-[#09090b] p-4 rounded-xl border border-indigo-500/20 space-y-1">
+                        <span className="text-[10px] text-indigo-400 font-bold uppercase tracking-wider block">Alvo de Quitação Imediata</span>
+                        <div className="flex justify-between items-baseline">
+                          <span className="text-base font-bold text-zinc-200">{alvo.credor}</span>
+                          <span className="text-lg font-black text-indigo-400">R$ {alvo.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                        <span className="text-xs text-zinc-500 block">Vencimento original: {formatarData(alvo.vencimento)}</span>
+                      </div>
+
+                      <div className="text-xs text-zinc-400 space-y-2">
+                        <p>1. 💰 Pague o valor mínimo de todas as outras contas pendentes.</p>
+                        <p>2. ⚡ Aplique qualquer renda extra ou sobra disponível no alvo acima até zerar.</p>
+                        <p>3. 🔄 Depois de quitar, passe para o próximo menor alvo: <strong className="text-zinc-200">{pendentesOrdenadas[1]?.credor}</strong> (R$ {pendentesOrdenadas[1]?.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}).</p>
+                      </div>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+          </div>
+        )}
+
       </div>
 
       {/* Modal para Colar Células do Excel */}
@@ -1084,6 +1740,120 @@ export default function App() {
                 Confirmar Importação
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para Editar Dívida */}
+      {mostrarModalEditar && (
+        <div className="fixed inset-0 bg-black/75 flex items-center justify-center p-4 z-50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#18181b] border border-[#27272a] rounded-xl max-w-lg w-full p-6 space-y-4 shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div>
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <span>✏️</span> Editar Compromisso
+              </h3>
+              <p className="text-xs text-zinc-400 mt-1">
+                Altere as informações da dívida selecionada abaixo.
+              </p>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 uppercase mb-1">Credor / Empresa *</label>
+                <input
+                  type="text"
+                  name="credor"
+                  value={editForm.credor}
+                  onChange={handleEditChange}
+                  className="w-full bg-[#09090b] border border-[#27272a] rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  required
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 uppercase mb-1">Valor (R$) *</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="valor"
+                    value={editForm.valor}
+                    onChange={handleEditChange}
+                    className="w-full bg-[#09090b] border border-[#27272a] rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 uppercase mb-1">Vencimento *</label>
+                  <input
+                    type="date"
+                    name="vencimento"
+                    value={editForm.vencimento}
+                    onChange={handleEditChange}
+                    className="w-full bg-[#09090b] border border-[#27272a] rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 uppercase mb-1">Categoria</label>
+                  <select
+                    name="categoria"
+                    value={editForm.categoria}
+                    onChange={handleEditChange}
+                    className="w-full bg-[#09090b] border border-[#27272a] rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  >
+                    {CATEGORIAS.map(cat => (
+                      <option key={cat.nome} value={cat.nome}>{cat.nome}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-300 uppercase mb-1">Status</label>
+                  <select
+                    name="status"
+                    value={editForm.status}
+                    onChange={handleEditChange}
+                    className="w-full bg-[#09090b] border border-[#27272a] rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                  >
+                    <option value="Pendente">Pendente</option>
+                    <option value="Pago">Pago</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-zinc-300 uppercase mb-1">Observações (Opcional)</label>
+                <textarea
+                  name="observacao"
+                  value={editForm.observacao}
+                  onChange={handleEditChange}
+                  rows="2"
+                  className="w-full bg-[#09090b] border border-[#27272a] rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                ></textarea>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMostrarModalEditar(false);
+                    setEditId(null);
+                  }}
+                  className="px-4 py-2 bg-[#09090b] hover:bg-zinc-800 border border-[#27272a] rounded-lg text-xs font-semibold text-zinc-400 hover:text-zinc-200 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  Salvar Alterações
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
